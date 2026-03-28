@@ -28,7 +28,7 @@ ASSETS = {
 }
 
 # ==========================================
-# 3. ENGINE PENGAMBIL DATA (CACHED)
+# 3. ENGINE PENGAMBIL DATA (HANYA CACHE DATAFRAME)
 # ==========================================
 @st.cache_data(ttl=1800) # Cache 30 menit
 def fetch_market_engine(ticker_symbol):
@@ -36,17 +36,17 @@ def fetch_market_engine(ticker_symbol):
         tkr = yf.Ticker(ticker_symbol)
         df = tkr.history(period="10y")
         if df.empty:
-            return pd.DataFrame(), None
+            return pd.DataFrame()
             
         df.reset_index(inplace=True)
         # Handle timezone (hapus tz info agar aman diproses)
         if df['Date'].dt.tz is not None:
             df['Date'] = df['Date'].dt.tz_convert(None)
             
-        return df, tkr
+        return df # HANYA RETURN DF, JANGAN RETURN MESIN TKR
     except Exception as e:
         st.error(f"Engine Error (Data Fetch): {e}")
-        return pd.DataFrame(), None
+        return pd.DataFrame()
 
 # ==========================================
 # MODUL A: TIME-CYCLE MATRIX
@@ -131,13 +131,17 @@ def render_fractal_matcher(df, asset_name):
 # ==========================================
 # MODUL C: NLP SENTIMENT SCORING
 # ==========================================
-def render_sentiment_analyzer(tkr, asset_name):
+def render_sentiment_analyzer(ticker_symbol, asset_name):
     st.markdown(f"### 📰 Live Macro Sentiment - {asset_name}")
     
-    if tkr is None: return st.warning("Ticker tidak merespon untuk data berita.")
-
+    # Panggil ticker di dalam fungsi ini agar tidak crash di cache
+    tkr = yf.Ticker(ticker_symbol)
+    
     with st.spinner("Scraping berita finansial terbaru..."):
-        news_data = tkr.news
+        try:
+            news_data = tkr.news
+        except Exception:
+            news_data = []
 
     if not news_data: return st.info("Tidak ada rilis berita signifikan hari ini.")
 
@@ -184,7 +188,6 @@ def main():
     st.sidebar.title("🏦 Pro-Quant Master")
     st.sidebar.markdown("Pilih instrumen yang ingin dianalisis:")
     
-    # 🌟 CORE UPGRADE: MULTI-ASSET SELECTOR 🌟
     selected_asset_name = st.sidebar.selectbox("Market Ticker:", list(ASSETS.keys()))
     selected_ticker = ASSETS[selected_asset_name]
     
@@ -192,7 +195,7 @@ def main():
     st.sidebar.caption("Data Source: Yahoo Finance API\n\nBuilt for Quantitative Analysis.")
 
     with st.spinner(f"Memuat dataset untuk {selected_asset_name}..."):
-        df, tkr = fetch_market_engine(selected_ticker)
+        df = fetch_market_engine(selected_ticker)
         
     if df.empty: return st.error("Gagal memuat data. Periksa koneksi internet Anda.")
 
@@ -202,7 +205,9 @@ def main():
     
     with t1: render_time_cycle(df, selected_asset_name)
     with t2: render_fractal_matcher(df, selected_asset_name)
-    with t3: render_sentiment_analyzer(tkr, selected_asset_name)
+    
+    # Kirim string Ticker-nya saja ke modul sentiment
+    with t3: render_sentiment_analyzer(selected_ticker, selected_asset_name)
 
 if __name__ == '__main__':
     main()
