@@ -53,8 +53,9 @@ def render_time_cycle(df, current_price):
         st.info(f"Harga Dasar Tercatat: **${atl_price:,.2f}**")
         
         bull_target = st.number_input("Target Durasi Bull (Hari)", value=1064, min_value=1)
-        # Pindahkan slider Bull Multiplier ke atas agar harganya bisa dihitung lebih awal
-        bull_multiplier = st.slider("Estimasi Kenaikan Siklus Berikutnya (x)", min_value=1.5, max_value=10.0, value=2.5, step=0.1)
+        
+        # [PERBAIKAN]: Slider dilonggarkan dari min 1.0 hingga max 20.0
+        bull_multiplier = st.slider("Estimasi Kenaikan Siklus Berikutnya (x)", min_value=1.0, max_value=20.0, value=1.5, step=0.1)
         
     with col2:
         st.error("📉 Parameter Puncak (Fase Distribusi)")
@@ -65,11 +66,11 @@ def render_time_cycle(df, current_price):
         st.info(f"Harga Puncak Tercatat: **${ath_price:,.2f}**")
         
         bear_target = st.number_input("Target Durasi Bear (Hari)", value=364, min_value=1)
-        # Pindahkan slider Drop Estimation ke atas agar harganya bisa dihitung lebih awal
-        drop_estimation = st.slider("Estimasi Penurunan ke Dasar (%)", min_value=40, max_value=90, value=75)
+        
+        # [PERBAIKAN]: Slider penurunan dilonggarkan dari min 10% hingga max 95%
+        drop_estimation = st.slider("Estimasi Penurunan ke Dasar (%)", min_value=10, max_value=95, value=75)
 
     # ================= KALKULASI UTAMA =================
-    # Waktu
     today = datetime.today().date()
     days_from_atl = (today - atl_date).days
     bull_progress = min(max(days_from_atl / bull_target, 0.0), 1.0)
@@ -82,7 +83,6 @@ def render_time_cycle(df, current_price):
     proj_ath_date = atl_date + timedelta(days=bull_target)
     proj_atl_date = ath_date + timedelta(days=bear_target)
 
-    # Harga
     live_gain_atl = ((current_price - atl_price) / atl_price) * 100
     live_drop_ath = ((current_price - ath_price) / ath_price) * 100
     
@@ -95,14 +95,12 @@ def render_time_cycle(df, current_price):
     if bull_progress >= 1.0: st.warning(f"🚨 **ALARM BULL SELESAI:** Target {bull_target} hari telah tercapai / terlampaui.")
     if bear_progress >= 1.0: st.success(f"🔥 **ALARM BEAR SELESAI:** Target {bear_target} hari telah tercapai / terlampaui.")
 
-    # TAMPILAN TIMELINE & PROYEKSI HARGA GABUNGAN
     c1, c2 = st.columns(2)
     with c1:
         label_sisa_bull = f"Sisa {sisa_bull} Hari Menuju Puncak" if sisa_bull > 0 else f"Terlewat {abs(sisa_bull)} Hari"
         st.metric("Timeline Fase Bull", f"{days_from_atl} / {bull_target} Hari", f"Live Gain: +{live_gain_atl:.1f}%")
         st.progress(bull_progress)
         st.caption(f"**{label_sisa_bull}**")
-        # Gabungan Tanggal & Harga Puncak
         st.success(f"🎯 **Proyeksi Puncak:** {proj_ath_date.strftime('%d %B %Y')} ➔ **${projected_next_ath:,.0f}**")
         
     with c2:
@@ -110,10 +108,8 @@ def render_time_cycle(df, current_price):
         st.metric("Timeline Fase Bear", f"{days_from_ath} / {bear_target} Hari", f"Live Drop: {live_drop_ath:.1f}%", delta_color="inverse")
         st.progress(bear_progress)
         st.caption(f"**{label_sisa_bear}**")
-        # Gabungan Tanggal & Harga Dasar
         st.error(f"🎯 **Proyeksi Dasar:** {proj_atl_date.strftime('%d %B %Y')} ➔ **${projected_bottom:,.0f}**")
 
-    # 🌟 FITUR DCA (REKOMENDASI EKSEKUSI) 🌟
     st.markdown("---")
     st.markdown("### 🛒 Auto-DCA & Rekomendasi Eksekusi")
     
