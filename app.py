@@ -48,82 +48,90 @@ def render_time_cycle(df, current_price):
         st.success("📈 Parameter Dasar (Fase Akumulasi)")
         atl_date = st.date_input("Pilih Tanggal Dasar (ATL)", value=datetime(2022, 11, 21))
         
-        # [FITUR BARU] AUTO-FETCH HARGA TERENDAH (LOW) PADA TANGGAL TERSEBUT
         atl_data = df[df['Date'].dt.date == atl_date]
         atl_price = float(atl_data['Low'].iloc[0]) if not atl_data.empty else current_price
         st.info(f"Harga Dasar Tercatat: **${atl_price:,.2f}**")
         
         bull_target = st.number_input("Target Durasi Bull (Hari)", value=1064, min_value=1)
+        # Pindahkan slider Bull Multiplier ke atas agar harganya bisa dihitung lebih awal
+        bull_multiplier = st.slider("Estimasi Kenaikan Siklus Berikutnya (x)", min_value=1.5, max_value=10.0, value=2.5, step=0.1)
         
     with col2:
         st.error("📉 Parameter Puncak (Fase Distribusi)")
         ath_date = st.date_input("Pilih Tanggal Puncak (ATH)", value=datetime(2024, 3, 14))
         
-        # [FITUR BARU] AUTO-FETCH HARGA TERTINGGI (HIGH) PADA TANGGAL TERSEBUT
         ath_data = df[df['Date'].dt.date == ath_date]
         ath_price = float(ath_data['High'].iloc[0]) if not ath_data.empty else current_price
         st.info(f"Harga Puncak Tercatat: **${ath_price:,.2f}**")
         
         bear_target = st.number_input("Target Durasi Bear (Hari)", value=364, min_value=1)
+        # Pindahkan slider Drop Estimation ke atas agar harganya bisa dihitung lebih awal
+        drop_estimation = st.slider("Estimasi Penurunan ke Dasar (%)", min_value=40, max_value=90, value=75)
 
-    # Kalkulasi Waktu
+    # ================= KALKULASI UTAMA =================
+    # Waktu
     today = datetime.today().date()
     days_from_atl = (today - atl_date).days
     bull_progress = min(max(days_from_atl / bull_target, 0.0), 1.0)
+    sisa_bull = bull_target - days_from_atl
     
     days_from_ath = (today - ath_date).days
     bear_progress = min(max(days_from_ath / bear_target, 0.0), 1.0)
+    sisa_bear = bear_target - days_from_ath
 
-    # Kalkulasi Persentase Harga Live
+    proj_ath_date = atl_date + timedelta(days=bull_target)
+    proj_atl_date = ath_date + timedelta(days=bear_target)
+
+    # Harga
     live_gain_atl = ((current_price - atl_price) / atl_price) * 100
     live_drop_ath = ((current_price - ath_price) / ath_price) * 100
-
-    st.markdown("---")
     
-    if bull_progress >= 1.0: st.warning(f"🚨 **ALARM BULL SELESAI:** Target {bull_target} hari telah tercapai.")
-    if bear_progress >= 1.0: st.success(f"🔥 **ALARM BEAR SELESAI:** Target {bear_target} hari tercapai. Bersiap untuk reversal!")
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.metric("Timeline Fase Bull", f"{days_from_atl} / {bull_target} Hari", f"Live Gain dari ATL: +{live_gain_atl:.1f}%")
-        st.progress(bull_progress)
-        st.caption(f"Proyeksi ATH Berikutnya: **{(atl_date + timedelta(days=bull_target)).strftime('%d %B %Y')}**")
-        
-    with c2:
-        st.metric("Timeline Fase Bear", f"{days_from_ath} / {bear_target} Hari", f"Live Drop dari ATH: {live_drop_ath:.1f}%", delta_color="inverse")
-        st.progress(bear_progress)
-        st.caption(f"Proyeksi Dasar Berikutnya: **{(ath_date + timedelta(days=bear_target)).strftime('%d %B %Y')}**")
-
-    # 🌟 FITUR DCA SINKRONISASI OTOMATIS 🌟
-    st.markdown("---")
-    st.markdown("### 🎯 Kalkulator Auto-DCA & Proyeksi Siklus")
-    
-    p1, p2, p3 = st.columns(3)
-    
-    with p1:
-        st.markdown("**1. Parameter Penurunan & Kenaikan**")
-        st.caption(f"Menghitung berdasarkan Harga Puncak: **${ath_price:,.0f}**")
-        drop_estimation = st.slider("Estimasi Penurunan ke Dasar (%)", min_value=40, max_value=90, value=75)
-        bull_multiplier = st.slider("Estimasi Kenaikan Siklus Depan (x)", min_value=1.5, max_value=10.0, value=2.5, step=0.1)
-
+    projected_next_ath = ath_price * bull_multiplier
     projected_bottom = ath_price * (1 - (drop_estimation / 100))
     buy_zone_max = projected_bottom * 1.25 
-    projected_next_ath = ath_price * bull_multiplier
+
+    st.markdown("---")
     
+    if bull_progress >= 1.0: st.warning(f"🚨 **ALARM BULL SELESAI:** Target {bull_target} hari telah tercapai / terlampaui.")
+    if bear_progress >= 1.0: st.success(f"🔥 **ALARM BEAR SELESAI:** Target {bear_target} hari telah tercapai / terlampaui.")
+
+    # TAMPILAN TIMELINE & PROYEKSI HARGA GABUNGAN
+    c1, c2 = st.columns(2)
+    with c1:
+        label_sisa_bull = f"Sisa {sisa_bull} Hari Menuju Puncak" if sisa_bull > 0 else f"Terlewat {abs(sisa_bull)} Hari"
+        st.metric("Timeline Fase Bull", f"{days_from_atl} / {bull_target} Hari", f"Live Gain: +{live_gain_atl:.1f}%")
+        st.progress(bull_progress)
+        st.caption(f"**{label_sisa_bull}**")
+        # Gabungan Tanggal & Harga Puncak
+        st.success(f"🎯 **Proyeksi Puncak:** {proj_ath_date.strftime('%d %B %Y')} ➔ **${projected_next_ath:,.0f}**")
+        
+    with c2:
+        label_sisa_bear = f"Sisa {sisa_bear} Hari Menuju Dasar" if sisa_bear > 0 else f"Terlewat {abs(sisa_bear)} Hari"
+        st.metric("Timeline Fase Bear", f"{days_from_ath} / {bear_target} Hari", f"Live Drop: {live_drop_ath:.1f}%", delta_color="inverse")
+        st.progress(bear_progress)
+        st.caption(f"**{label_sisa_bear}**")
+        # Gabungan Tanggal & Harga Dasar
+        st.error(f"🎯 **Proyeksi Dasar:** {proj_atl_date.strftime('%d %B %Y')} ➔ **${projected_bottom:,.0f}**")
+
+    # 🌟 FITUR DCA (REKOMENDASI EKSEKUSI) 🌟
+    st.markdown("---")
+    st.markdown("### 🛒 Auto-DCA & Rekomendasi Eksekusi")
+    
+    p1, p2 = st.columns(2)
+    
+    with p1:
+        st.markdown("**Zona Akumulasi Aman (Buy Zone)**")
+        st.success(f"🛒 **MULAI BELI (DCA) DI RENTANG:**\n### **${projected_bottom:,.0f} s/d ${buy_zone_max:,.0f}**")
+        st.caption(f"*Taksiran Penurunan: {drop_estimation}% dari puncak terakhir.*")
+        
     with p2:
-        st.markdown("**2. Zona Beli Aman (Buy Zone)**")
-        st.metric("Proyeksi Harga Dasar (Bottom)", f"${projected_bottom:,.0f}", f"-{drop_estimation}% dari Puncak")
-        st.success(f"🛒 **ZONA AKUMULASI (DCA):**\n\n**${projected_bottom:,.0f} s/d ${buy_zone_max:,.0f}**")
-        
-    with p3:
-        st.markdown("**3. Target Jual (Take Profit)**")
-        st.metric("Proyeksi Puncak Berikutnya", f"${projected_next_ath:,.0f}", f"{bull_multiplier}x lipat dari ATH", delta_color="normal")
-        
-        if current_price <= buy_zone_max: status_beli = "🟢 SANGAT MURAH (Waktunya Beli)"
-        elif current_price >= (projected_next_ath * 0.7): status_beli = "🔴 SANGAT MAHAL (Waktunya Jual)"
-        else: status_beli = "⚪ AREA NETRAL (Hold/Tunggu)"
+        st.markdown("**Status Live Eksekusi**")
+        if current_price <= buy_zone_max: status_beli = "🟢 SANGAT MURAH (Waktunya Beli & DCA)"
+        elif current_price >= (projected_next_ath * 0.7): status_beli = "🔴 SANGAT MAHAL (Waktunya Jual Bertahap)"
+        else: status_beli = "⚪ AREA NETRAL (Tahan / Hold)"
             
-        st.info(f"**Status Harga Live Saat Ini:**\n\n**{status_beli}**")
+        st.info(f"**Kondisi Harga Saat Ini:**\n### **{status_beli}**")
+        st.caption(f"*Taksiran Kenaikan: {bull_multiplier}x lipat dari puncak terakhir.*")
 
 # ==========================================
 # MODUL B: FRACTAL OVERLAY ENGINE
