@@ -41,19 +41,29 @@ def fetch_btc_data():
 # MODUL A: TIME-PRICE MATRIX & DCA ZONES
 # ==========================================
 def render_time_cycle(df, current_price):
-    st.markdown("### ⏳ Matrix Siklus & Sinkronisasi Harga")
+    st.markdown("### ⏳ Matrix Siklus & Sinkronisasi Harga Otomatis")
     
     col1, col2 = st.columns(2)
     with col1:
         st.success("📈 Parameter Dasar (Fase Akumulasi)")
-        atl_date = st.date_input("Tanggal Dasar (ATL)", value=datetime(2022, 11, 21))
-        atl_price = st.number_input("Harga Dasar (ATL) $", value=15476, step=500, help="Harga terendah di siklus sebelumnya.")
+        atl_date = st.date_input("Pilih Tanggal Dasar (ATL)", value=datetime(2022, 11, 21))
+        
+        # [FITUR BARU] AUTO-FETCH HARGA TERENDAH (LOW) PADA TANGGAL TERSEBUT
+        atl_data = df[df['Date'].dt.date == atl_date]
+        atl_price = float(atl_data['Low'].iloc[0]) if not atl_data.empty else current_price
+        st.info(f"Harga Dasar Tercatat: **${atl_price:,.2f}**")
+        
         bull_target = st.number_input("Target Durasi Bull (Hari)", value=1064, min_value=1)
         
     with col2:
         st.error("📉 Parameter Puncak (Fase Distribusi)")
-        ath_date = st.date_input("Tanggal Puncak (ATH)", value=datetime(2024, 3, 14)) # Default diubah ke puncak nyata 2024
-        ath_price = st.number_input("Harga Puncak (ATH) $", value=73750, step=500, help="Harga tertinggi yang dicapai baru-baru ini.")
+        ath_date = st.date_input("Pilih Tanggal Puncak (ATH)", value=datetime(2024, 3, 14))
+        
+        # [FITUR BARU] AUTO-FETCH HARGA TERTINGGI (HIGH) PADA TANGGAL TERSEBUT
+        ath_data = df[df['Date'].dt.date == ath_date]
+        ath_price = float(ath_data['High'].iloc[0]) if not ath_data.empty else current_price
+        st.info(f"Harga Puncak Tercatat: **${ath_price:,.2f}**")
+        
         bear_target = st.number_input("Target Durasi Bear (Hari)", value=364, min_value=1)
 
     # Kalkulasi Waktu
@@ -84,7 +94,7 @@ def render_time_cycle(df, current_price):
         st.progress(bear_progress)
         st.caption(f"Proyeksi Dasar Berikutnya: **{(ath_date + timedelta(days=bear_target)).strftime('%d %B %Y')}**")
 
-    # 🌟 FITUR DCA (MENGAMBIL DATA DARI INPUT DI ATAS) 🌟
+    # 🌟 FITUR DCA SINKRONISASI OTOMATIS 🌟
     st.markdown("---")
     st.markdown("### 🎯 Kalkulator Auto-DCA & Proyeksi Siklus")
     
@@ -92,7 +102,7 @@ def render_time_cycle(df, current_price):
     
     with p1:
         st.markdown("**1. Parameter Penurunan & Kenaikan**")
-        st.info(f"Menggunakan acuan Puncak: **${ath_price:,.0f}**")
+        st.caption(f"Menghitung berdasarkan Harga Puncak: **${ath_price:,.0f}**")
         drop_estimation = st.slider("Estimasi Penurunan ke Dasar (%)", min_value=40, max_value=90, value=75)
         bull_multiplier = st.slider("Estimasi Kenaikan Siklus Depan (x)", min_value=1.5, max_value=10.0, value=2.5, step=0.1)
 
