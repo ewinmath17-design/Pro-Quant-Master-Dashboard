@@ -38,22 +38,25 @@ def fetch_btc_data():
         return pd.DataFrame()
 
 # ==========================================
-# MODUL A: TIME-CYCLE MATRIX & PRICE TARGETS
+# MODUL A: TIME-PRICE MATRIX & DCA ZONES
 # ==========================================
 def render_time_cycle(df, current_price):
-    st.markdown("### ⏳ Matrix Siklus Bitcoin")
+    st.markdown("### ⏳ Matrix Siklus & Sinkronisasi Harga")
     
     col1, col2 = st.columns(2)
     with col1:
-        st.success("📈 Fase Akumulasi (Bullish)")
-        atl_date = st.date_input("Tanggal Dasar Terakhir (ATL)", value=datetime(2022, 11, 21))
+        st.success("📈 Parameter Dasar (Fase Akumulasi)")
+        atl_date = st.date_input("Tanggal Dasar (ATL)", value=datetime(2022, 11, 21))
+        atl_price = st.number_input("Harga Dasar (ATL) $", value=15476, step=500, help="Harga terendah di siklus sebelumnya.")
         bull_target = st.number_input("Target Durasi Bull (Hari)", value=1064, min_value=1)
         
     with col2:
-        st.error("📉 Fase Distribusi (Bearish)")
-        ath_date = st.date_input("Tanggal Puncak Terakhir (ATH)", value=datetime(2025, 10, 6))
+        st.error("📉 Parameter Puncak (Fase Distribusi)")
+        ath_date = st.date_input("Tanggal Puncak (ATH)", value=datetime(2024, 3, 14)) # Default diubah ke puncak nyata 2024
+        ath_price = st.number_input("Harga Puncak (ATH) $", value=73750, step=500, help="Harga tertinggi yang dicapai baru-baru ini.")
         bear_target = st.number_input("Target Durasi Bear (Hari)", value=364, min_value=1)
 
+    # Kalkulasi Waktu
     today = datetime.today().date()
     days_from_atl = (today - atl_date).days
     bull_progress = min(max(days_from_atl / bull_target, 0.0), 1.0)
@@ -61,59 +64,54 @@ def render_time_cycle(df, current_price):
     days_from_ath = (today - ath_date).days
     bear_progress = min(max(days_from_ath / bear_target, 0.0), 1.0)
 
+    # Kalkulasi Persentase Harga Live
+    live_gain_atl = ((current_price - atl_price) / atl_price) * 100
+    live_drop_ath = ((current_price - ath_price) / ath_price) * 100
+
     st.markdown("---")
     
-    if bull_progress >= 1.0:
-        st.warning(f"🚨 **ALARM SIKLUS BULL SELESAI:** Waspada fase distribusi / taking profit!")
-    if bear_progress >= 1.0:
-        st.success(f"🔥 **ALARM SIKLUS BEAR SELESAI:** Ini adalah zona akumulasi harga diskon!")
+    if bull_progress >= 1.0: st.warning(f"🚨 **ALARM BULL SELESAI:** Target {bull_target} hari telah tercapai.")
+    if bear_progress >= 1.0: st.success(f"🔥 **ALARM BEAR SELESAI:** Target {bear_target} hari tercapai. Bersiap untuk reversal!")
 
     c1, c2 = st.columns(2)
     with c1:
-        st.metric("Progress Siklus Bull (Naik)", f"{days_from_atl} Hari", f"Target: {bull_target} Hari")
+        st.metric("Timeline Fase Bull", f"{days_from_atl} / {bull_target} Hari", f"Live Gain dari ATL: +{live_gain_atl:.1f}%")
         st.progress(bull_progress)
         st.caption(f"Proyeksi ATH Berikutnya: **{(atl_date + timedelta(days=bull_target)).strftime('%d %B %Y')}**")
         
     with c2:
-        st.metric("Progress Siklus Bear (Turun)", f"{days_from_ath} Hari", f"Target: {bear_target} Hari", delta_color="inverse")
+        st.metric("Timeline Fase Bear", f"{days_from_ath} / {bear_target} Hari", f"Live Drop dari ATH: {live_drop_ath:.1f}%", delta_color="inverse")
         st.progress(bear_progress)
         st.caption(f"Proyeksi Dasar Berikutnya: **{(ath_date + timedelta(days=bear_target)).strftime('%d %B %Y')}**")
 
-    # 🌟 FITUR BARU: PROYEKSI HARGA & ZONA ENTRY 🌟
+    # 🌟 FITUR DCA (MENGAMBIL DATA DARI INPUT DI ATAS) 🌟
     st.markdown("---")
-    st.markdown("### 🎯 Proyeksi Harga & Zona Entry (DCA)")
-    st.markdown("Kalkulasi berdasarkan data historis koreksi pasar dan ekspektasi *multiplier* siklus berikutnya.")
+    st.markdown("### 🎯 Kalkulator Auto-DCA & Proyeksi Siklus")
     
     p1, p2, p3 = st.columns(3)
     
     with p1:
-        st.markdown("**1. Parameter Historis**")
-        ath_price_input = st.number_input("Harga Puncak (ATH) Terakhir ($)", value=73750, step=1000)
-        drop_estimation = st.slider("Estimasi Penurunan ke Dasar (%)", min_value=50, max_value=90, value=75, help="Secara historis BTC turun 70%-80% dari ATH di Bear Market.")
-        bull_multiplier = st.slider("Estimasi Kenaikan Siklus Depan (x)", min_value=1.5, max_value=10.0, value=2.5, step=0.1, help="Berapa kali lipat puncak berikutnya dibandingkan puncak sebelumnya.")
+        st.markdown("**1. Parameter Penurunan & Kenaikan**")
+        st.info(f"Menggunakan acuan Puncak: **${ath_price:,.0f}**")
+        drop_estimation = st.slider("Estimasi Penurunan ke Dasar (%)", min_value=40, max_value=90, value=75)
+        bull_multiplier = st.slider("Estimasi Kenaikan Siklus Depan (x)", min_value=1.5, max_value=10.0, value=2.5, step=0.1)
 
-    # Kalkulasi Harga
-    projected_bottom = ath_price_input * (1 - (drop_estimation / 100))
-    buy_zone_max = projected_bottom * 1.25  # +25% dari dasar adalah zona aman untuk menyicil (DCA)
-    projected_next_ath = ath_price_input * bull_multiplier
+    projected_bottom = ath_price * (1 - (drop_estimation / 100))
+    buy_zone_max = projected_bottom * 1.25 
+    projected_next_ath = ath_price * bull_multiplier
     
     with p2:
-        st.markdown("**2. Zona Beli (Entry Zone)**")
+        st.markdown("**2. Zona Beli Aman (Buy Zone)**")
         st.metric("Proyeksi Harga Dasar (Bottom)", f"${projected_bottom:,.0f}", f"-{drop_estimation}% dari Puncak")
-        st.success(f"🛒 **ZONA AKUMULASI (Beli):**\n\n**${projected_bottom:,.0f} s/d ${buy_zone_max:,.0f}**")
-        st.caption("*Mulai beli secara bertahap (DCA) saat harga masuk ke dalam zona hijau ini agar tidak ketinggalan kereta.*")
+        st.success(f"🛒 **ZONA AKUMULASI (DCA):**\n\n**${projected_bottom:,.0f} s/d ${buy_zone_max:,.0f}**")
         
     with p3:
         st.markdown("**3. Target Jual (Take Profit)**")
-        st.metric("Proyeksi Puncak Berikutnya", f"${projected_next_ath:,.0f}", f"{bull_multiplier}x dari ATH Terakhir", delta_color="normal")
+        st.metric("Proyeksi Puncak Berikutnya", f"${projected_next_ath:,.0f}", f"{bull_multiplier}x lipat dari ATH", delta_color="normal")
         
-        # Logika Status Harga Saat Ini
-        if current_price <= buy_zone_max:
-            status_beli = "🟢 SANGAT MURAH (Waktunya Beli)"
-        elif current_price >= (projected_next_ath * 0.8):
-            status_beli = "🔴 SANGAT MAHAL (Waktunya Jual)"
-        else:
-            status_beli = "⚪ MENENGAH (Tahan/Hold)"
+        if current_price <= buy_zone_max: status_beli = "🟢 SANGAT MURAH (Waktunya Beli)"
+        elif current_price >= (projected_next_ath * 0.7): status_beli = "🔴 SANGAT MAHAL (Waktunya Jual)"
+        else: status_beli = "⚪ AREA NETRAL (Hold/Tunggu)"
             
         st.info(f"**Status Harga Live Saat Ini:**\n\n**{status_beli}**")
 
@@ -131,22 +129,19 @@ def render_fractal_matcher(df):
     with c3:
         smoothing = st.slider("Filter Noise (SMA)", 1, 30, 7)
 
-    if len(hist_dates) != 2 or len(curr_dates) != 2:
-        return st.warning("Mohon pilih rentang tanggal awal dan akhir dengan lengkap.")
+    if len(hist_dates) != 2 or len(curr_dates) != 2: return st.warning("Pilih rentang tanggal lengkap.")
 
     df_hist = df[(df['Date'].dt.date >= hist_dates[0]) & (df['Date'].dt.date <= hist_dates[1])].copy()
     df_curr = df[(df['Date'].dt.date >= curr_dates[0]) & (df['Date'].dt.date <= curr_dates[1])].copy()
 
-    if df_hist.empty or df_curr.empty:
-        return st.error("Data rentang tanggal tidak ditemukan. Coba rentang waktu lain.")
+    if df_hist.empty or df_curr.empty: return st.error("Data tidak ditemukan.")
 
     hist_norm = (df_hist['Close'] / df_hist['Close'].iloc[0] * 100).rolling(window=smoothing).mean().dropna().reset_index(drop=True)
     curr_norm = (df_curr['Close'] / df_curr['Close'].iloc[0] * 100).rolling(window=smoothing).mean().dropna().reset_index(drop=True)
 
     min_len = min(len(hist_norm), len(curr_norm))
     if min_len > 15:
-        hist_plot = hist_norm.iloc[:min_len]
-        curr_plot = curr_norm.iloc[:min_len]
+        hist_plot, curr_plot = hist_norm.iloc[:min_len], curr_norm.iloc[:min_len]
         
         fig = go.Figure()
         fig.add_trace(go.Scatter(y=hist_plot, mode='lines', name='Masa Lalu (Pattern)', line=dict(color='#7f8c8d', width=2)))
@@ -156,19 +151,15 @@ def render_fractal_matcher(df):
         st.plotly_chart(fig, use_container_width=True)
 
         corr_val = hist_plot.corr(curr_plot) * 100
-        if pd.isna(corr_val):
-            st.warning("**Skor Korelasi: NaN%**")
-        else:
-            st.info(f"**Tingkat Kemiripan Pola (Korelasi Pearson): {corr_val:.2f}%**")
-    else:
-        st.warning("Rentang waktu data terlalu pendek.")
+        if pd.isna(corr_val): st.warning("**Skor Korelasi: NaN%**")
+        else: st.info(f"**Tingkat Kemiripan Pola (Korelasi Pearson): {corr_val:.2f}%**")
+    else: st.warning("Rentang waktu terlalu pendek.")
 
 # ==========================================
 # MODUL C: NLP SENTIMENT SCORING
 # ==========================================
 def render_sentiment_analyzer():
     st.markdown("### 📰 Live Macro Sentiment")
-    
     tkr = yf.Ticker(TICKER)
     with st.spinner("Scraping berita finansial terbaru..."):
         try: news_data = tkr.news
@@ -177,12 +168,9 @@ def render_sentiment_analyzer():
     if not news_data: return st.info("Tidak ada rilis berita signifikan hari ini.")
 
     news_list, sentiments = [], []
-
     for item in news_data[:6]: 
         title = item.get('title')
-        if not title and 'content' in item:
-            title = item['content'].get('title', '')
-            
+        if not title and 'content' in item: title = item['content'].get('title', '')
         if not title: continue
             
         link = item.get('link', '#')
@@ -192,7 +180,6 @@ def render_sentiment_analyzer():
         if polarity > 0.05: badge, color = "BULLISH", "#27ae60"
         elif polarity < -0.05: badge, color = "BEARISH", "#c0392b"
         else: badge, color = "NEUTRAL", "#7f8c8d" 
-            
         news_list.append(f"**[{badge}]** [{title}]({link})")
 
     avg_score = sum(sentiments) / len(sentiments) if sentiments else 0
@@ -211,7 +198,7 @@ def render_sentiment_analyzer():
         
     with c2:
         st.markdown("#### Radar Berita Terkini:")
-        if not news_list: st.write("- Berita sedang diproses oleh bursa...")
+        if not news_list: st.write("- Berita sedang diproses...")
         for n in news_list: st.markdown(f"- {n}")
 
 # ==========================================
@@ -224,7 +211,7 @@ def main():
     with st.spinner("Menghubungkan ke node market..."):
         df = fetch_btc_data()
         
-    if df.empty: return st.error("Gagal memuat data. Periksa koneksi internet Anda.")
+    if df.empty: return st.error("Gagal memuat data.")
 
     current_price = df['Close'].iloc[-1]
     prev_price = df['Close'].iloc[-2]
@@ -238,8 +225,7 @@ def main():
     st.sidebar.caption("Data diperbarui setiap 15 menit.\nBuilt exclusively for Bitcoin.")
 
     st.title("Bitcoin (BTC) Cycle Tracker")
-    
-    t1, t2, t3 = st.tabs(["⏳ Time-Cycle Matrix", "🔍 Fractal Overlay", "📰 Real-Time Sentiment"])
+    t1, t2, t3 = st.tabs(["⏳ Matrix & Target", "🔍 Fractal Overlay", "📰 Macro Sentiment"])
     
     with t1: render_time_cycle(df, current_price)
     with t2: render_fractal_matcher(df)
